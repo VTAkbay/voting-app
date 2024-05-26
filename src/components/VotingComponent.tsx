@@ -1,22 +1,33 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import {
   useReadContract,
   useWriteContract,
   useAccount,
   useReadContracts,
+  BaseError,
+  useBlockNumber,
+  useWaitForTransactionReceipt,
 } from "wagmi";
-import { isAddress, toNumber } from "ethers";
+import { toNumber } from "ethers";
 import {
   Container,
   Typography,
-  TextField,
   Button,
   List,
   ListItem,
   ListItemText,
   Alert,
+  Box,
+  ListItemAvatar,
+  Avatar,
 } from "@mui/material";
-import { contractABI, contractAddress } from "../utils";
+import CircularProgress from "@mui/material/CircularProgress";
+import LoadingButton from "@mui/lab/LoadingButton";
+import { green, red } from "@mui/material/colors";
+import HowToVoteIcon from "@mui/icons-material/HowToVote";
+import CheckCircleIcon from "@mui/icons-material/CheckCircle";
+import { contractABI, contractAddress, extractReason } from "../utils";
+import RegisterModal from "./RegisterModal";
 
 interface Candidate {
   id: number;
@@ -26,59 +37,95 @@ interface Candidate {
 
 const VotingComponent: React.FC = () => {
   const { address } = useAccount();
+
+  const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isAdmin, setIsAdmin] = useState<boolean>(false);
-  const [voterAddress, setVoterAddress] = useState<string>("");
-  const [isValidVoterAddress, setIsValidVoterAddress] = useState<boolean>(true);
+  const [isRegistered, setIsRegistered] = useState<boolean>(false);
+  const [isVoted, setIsVoted] = useState<boolean>(false);
   const [candidates, setCandidates] = useState<Candidate[]>([]);
-  // console.log("candidates", candidates);
+
+  const [open, setOpen] = React.useState(false);
+  const handleOpen = () => setOpen(true);
+  const handleClose = () => setOpen(false);
+
+  const { data: blockNumber } = useBlockNumber({ watch: true });
 
   const {
     data: hash,
     writeContract,
     error: writeContractError,
+    isPending,
   } = useWriteContract();
-  // console.log("writeContractError", writeContractError);
-  // console.log("hash", hash);
 
-  const { data: adminAddress, error: adminError } = useReadContract({
+  const { isLoading: isConfirming } = useWaitForTransactionReceipt({
+    hash,
+  });
+
+  const { data: adminAddress } = useReadContract({
     address: contractAddress,
     abi: contractABI,
     functionName: "admin",
   });
-  // if (adminError) {
-  //   console.log("adminError", adminError);
-  // }
 
-  const { data: totalCandidatesData, error: totalCandidatesError } =
-    useReadContract({
-      address: contractAddress,
-      abi: contractABI,
-      functionName: "getTotalCandidates",
-    });
-  // if (totalCandidatesError) {
-  //   console.log("totalCandidatesError", totalCandidatesError);
-  // }
-
-  const totalCandidates = totalCandidatesData ? Number(totalCandidatesData) : 0;
-
-  const contractConfig = {
+  const { data: totalCandidatesData } = useReadContract({
     address: contractAddress,
     abi: contractABI,
-  } as const;
+    functionName: "getTotalCandidates",
+  });
 
-  const contractReads =
-    totalCandidates > 0
+  const totalCandidates = useMemo(
+    () => (totalCandidatesData ? Number(totalCandidatesData) : 0),
+    [totalCandidatesData]
+  );
+
+  const contractReads = useMemo(() => {
+    return totalCandidates > 0
       ? Array.from({ length: totalCandidates }, (_, i) => ({
-          ...contractConfig,
+          address: contractAddress,
+          abi: contractABI,
           functionName: "getCandidate",
           args: [i],
         }))
       : [];
+  }, [totalCandidates, contractAddress, contractABI]);
 
-  const { data: candidatesData } = useReadContracts({
+  const {
+    data: candidatesData,
+    isLoading: isLoadingCandidates,
+    refetch: refetchCandidatesData,
+  } = useReadContracts({
     contracts: contractReads,
   });
-  // console.log("candidatesData", candidatesData);
+
+  const {
+    data: voterData,
+    isLoading: isLoadingVoterData,
+    refetch: refetchVoterData,
+  } = useReadContract({
+    address: contractAddress,
+    abi: contractABI,
+    functionName: "voters",
+    args: [address],
+  });
+
+  const handleVote = useCallback(
+    (candidateId: number) => {
+      writeContract({
+        address: contractAddress,
+        abi: contractABI,
+        functionName: "vote",
+        args: [candidateId],
+      });
+    },
+    [contractAddress, contractABI, writeContract]
+  );
+
+  useEffect(() => {
+    if (Array.isArray(voterData) && voterData.length > 0) {
+      setIsRegistered(voterData[0] as boolean);
+      setIsVoted(voterData[1] as boolean);
+    }
+  }, [voterData]);
 
   useEffect(() => {
     if (adminAddress && address) {
@@ -99,89 +146,119 @@ const VotingComponent: React.FC = () => {
     }
   }, [candidatesData]);
 
-  const handleRegisterVoter = () => {
-    if (isAddress(voterAddress)) {
-      setIsValidVoterAddress(true);
-      writeContract({
-        address: contractAddress,
-        abi: contractABI,
-        functionName: "registerVoter",
-        args: [voterAddress],
-      });
-    } else {
-      setIsValidVoterAddress(false);
-    }
-  };
+  useEffect(() => {
+    setIsLoading(isLoadingVoterData || isLoadingCandidates);
+  }, [isLoadingVoterData, isLoadingCandidates]);
 
-  const handleVote = (candidateId: number) => {
-    writeContract({
-      address: contractAddress,
-      abi: contractABI,
-      functionName: "vote",
-      args: [candidateId],
-    });
-  };
+  useEffect(() => {
+    refetchCandidatesData();
+    refetchVoterData();
+  }, [blockNumber]);
 
   return (
     <Container sx={{ mt: 4 }}>
+      <Typography variant="h4" component="h1" gutterBottom>
+        Decentralized Voting System
+      </Typography>
+
       {address ? (
-        <>
-          <Typography variant="h4" component="h1" gutterBottom>
-            Decentralized Voting System
-          </Typography>
-          {isAdmin && (
-            <div>
-              <Typography variant="h5" component="h2">
-                Register Voter
-              </Typography>
-              <TextField
-                label="Voter Address"
-                value={voterAddress}
-                onChange={(e) => setVoterAddress(e.target.value)}
-                error={!isValidVoterAddress}
-                helperText={
-                  !isValidVoterAddress ? "Invalid Ethereum address." : ""
-                }
-                fullWidth
-                margin="normal"
-              />
-              <Button
-                variant="contained"
-                color="primary"
-                onClick={handleRegisterVoter}
-              >
-                Register
-              </Button>
-            </div>
-          )}
-          <Typography mt={5} variant="h5" component="h2" gutterBottom>
-            Candidates
-          </Typography>
-          <List>
-            {candidates.map((candidate) => (
-              <ListItem key={candidate.id}>
-                <ListItemText
-                  primary={`${candidate.name} - Votes: ${toNumber(candidate.voteCount)}`}
-                />
-                <Button
-                  variant="contained"
-                  color="secondary"
-                  onClick={() => handleVote(candidate.id)}
+        isLoading ? (
+          <Box sx={{ display: "flex" }}>
+            <CircularProgress />
+          </Box>
+        ) : (
+          <Box>
+            {isAdmin && (
+              <Box mt={3}>
+                <Alert
+                  variant="outlined"
+                  severity="info"
+                  action={
+                    <Button onClick={handleOpen} color="inherit" size="small">
+                      Register
+                    </Button>
+                  }
                 >
-                  Vote
-                </Button>
-              </ListItem>
-            ))}
-          </List>
-          {writeContractError && (
-            <Alert severity="error">{writeContractError.message}</Alert>
-          )}
-        </>
+                  You are admin and can register new voters by clicking the
+                  Register button.
+                </Alert>
+              </Box>
+            )}
+
+            <Typography mt={3} variant="h5" component="h2" gutterBottom>
+              Candidates
+            </Typography>
+
+            {!isVoted ? (
+              <Alert severity={isRegistered ? "success" : "warning"}>
+                {isRegistered
+                  ? "You are registered for voting. Please vote."
+                  : "You are not registered for voting. Ask the admin to register you if you are not."}
+              </Alert>
+            ) : (
+              <Alert severity="success">You have voted.</Alert>
+            )}
+
+            <List>
+              {candidates.map((candidate) => (
+                <ListItem
+                  key={candidate.id}
+                  alignItems="flex-start"
+                  sx={{ mb: 2 }}
+                >
+                  <ListItemAvatar>
+                    <Avatar
+                      sx={{
+                        bgcolor:
+                          isRegistered && !isVoted ? green[500] : red[500],
+                      }}
+                    >
+                      {isRegistered && !isVoted ? (
+                        <HowToVoteIcon />
+                      ) : (
+                        <CheckCircleIcon />
+                      )}
+                    </Avatar>
+                  </ListItemAvatar>
+                  <ListItemText
+                    primary={
+                      <Typography variant="h6" component="div">
+                        {candidate.name}
+                      </Typography>
+                    }
+                    secondary={
+                      <Typography variant="body2" color="textSecondary">
+                        Votes: {toNumber(candidate.voteCount)}
+                      </Typography>
+                    }
+                  />
+                  <LoadingButton
+                    variant="contained"
+                    color="primary"
+                    onClick={() => handleVote(candidate.id)}
+                    disabled={!isRegistered || isVoted}
+                    loading={isPending || isConfirming}
+                  >
+                    Vote
+                  </LoadingButton>
+                </ListItem>
+              ))}
+            </List>
+
+            {writeContractError && (
+              <Alert severity="error">
+                {extractReason((writeContractError as BaseError).shortMessage)}
+              </Alert>
+            )}
+          </Box>
+        )
       ) : (
         <>
           <Alert severity="warning">Please connect wallet to vote.</Alert>
         </>
       )}
+
+      <RegisterModal open={open} handleClose={handleClose} />
     </Container>
   );
 };

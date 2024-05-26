@@ -4,11 +4,19 @@ import {
   Container,
   Typography,
   Box,
-  Button,
   Alert,
   ThemeProvider,
   createTheme,
+  Card,
+  CardHeader,
+  CardContent,
+  Divider,
+  Paper,
+  List,
+  ListItem,
+  ListItemText,
 } from "@mui/material";
+import { LoadingButton } from "@mui/lab";
 
 const darkTheme = createTheme({
   palette: {
@@ -19,33 +27,53 @@ const darkTheme = createTheme({
 function App() {
   const account = useAccount();
   const { connectors, connect, status, error } = useConnect();
-
   const { disconnect } = useDisconnect();
 
   return (
     <ThemeProvider theme={darkTheme}>
       <Container>
         <Box my={4}>
-          <Typography variant="h4" component="h1" gutterBottom>
-            Account
-          </Typography>
-          <Box>
-            <Typography variant="body1">Status: {account.status}</Typography>
-            <Typography variant="body1">
-              Addresses: {JSON.stringify(account.addresses)}
-            </Typography>
-            <Typography variant="body1">ChainId: {account.chainId}</Typography>
-          </Box>
-          {account.status === "connected" && (
-            <Button
-              variant="contained"
-              color="secondary"
-              onClick={() => disconnect()}
-              sx={{ mt: 2 }}
-            >
-              Disconnect
-            </Button>
-          )}
+          <Card>
+            <CardHeader title="Account" />
+            <CardContent>
+              <Typography variant="body1">
+                <strong>Status:</strong> {account.status}
+              </Typography>
+              <Divider sx={{ my: 1 }} />
+              <Typography variant="body1">
+                <strong>Addresses:</strong>
+              </Typography>
+              <Paper
+                variant="outlined"
+                sx={{ maxHeight: 200, overflow: "auto", mt: 1, mb: 2 }}
+              >
+                <List>
+                  {account.addresses?.map((address, index) => (
+                    <ListItem key={index}>
+                      <ListItemText primary={address} />
+                    </ListItem>
+                  ))}
+                </List>
+              </Paper>
+              <Divider sx={{ my: 1 }} />
+              <Typography variant="body1">
+                <strong>ChainId:</strong> {account.chainId}
+              </Typography>
+              <LoadingButton
+                variant="contained"
+                color="error"
+                onClick={() => disconnect()}
+                sx={{ mt: 2 }}
+                disabled={account.status !== "connected"}
+                loading={
+                  account.status === "connecting" ||
+                  account.status === "reconnecting"
+                }
+              >
+                Disconnect
+              </LoadingButton>
+            </CardContent>
+          </Card>
         </Box>
 
         <Box my={4}>
@@ -53,15 +81,20 @@ function App() {
             Connect
           </Typography>
           {connectors.map((connector) => (
-            <Button
+            <LoadingButton
               key={connector.uid}
               variant="contained"
               color="primary"
               onClick={() => connect({ connector })}
               sx={{ mt: 1, mr: 1 }}
+              disabled={account.status === "connected"}
+              loading={
+                account.status === "connecting" ||
+                account.status === "reconnecting"
+              }
             >
               {connector.name}
-            </Button>
+            </LoadingButton>
           ))}
           <Box my={2}>
             {status && <Alert severity="info">{status}</Alert>}
