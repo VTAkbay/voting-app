@@ -5,9 +5,7 @@ import {
   useAccount,
   useReadContracts,
 } from "wagmi";
-import VotingArtifact from "../artifacts/Voting.json";
 import { isAddress, toNumber } from "ethers";
-import { Abi } from "viem";
 import {
   Container,
   Typography,
@@ -18,9 +16,7 @@ import {
   ListItemText,
   Alert,
 } from "@mui/material";
-
-const contractAddress = "0x98E97B7852e5F439f9119756B9803b0EA480b53F";
-const contractABI = VotingArtifact.abi as Abi;
+import { contractABI, contractAddress } from "../utils";
 
 interface Candidate {
   id: number;
@@ -34,24 +30,24 @@ const VotingComponent: React.FC = () => {
   const [voterAddress, setVoterAddress] = useState<string>("");
   const [isValidVoterAddress, setIsValidVoterAddress] = useState<boolean>(true);
   const [candidates, setCandidates] = useState<Candidate[]>([]);
-  console.log("candidates", candidates);
+  // console.log("candidates", candidates);
 
   const {
     data: hash,
     writeContract,
     error: writeContractError,
   } = useWriteContract();
-  console.log("writeContractError", writeContractError);
-  console.log("hash", hash);
+  // console.log("writeContractError", writeContractError);
+  // console.log("hash", hash);
 
   const { data: adminAddress, error: adminError } = useReadContract({
     address: contractAddress,
     abi: contractABI,
     functionName: "admin",
   });
-  if (adminError) {
-    console.log("adminError", adminError);
-  }
+  // if (adminError) {
+  //   console.log("adminError", adminError);
+  // }
 
   const { data: totalCandidatesData, error: totalCandidatesError } =
     useReadContract({
@@ -59,9 +55,9 @@ const VotingComponent: React.FC = () => {
       abi: contractABI,
       functionName: "getTotalCandidates",
     });
-  if (totalCandidatesError) {
-    console.log("totalCandidatesError", totalCandidatesError);
-  }
+  // if (totalCandidatesError) {
+  //   console.log("totalCandidatesError", totalCandidatesError);
+  // }
 
   const totalCandidates = totalCandidatesData ? Number(totalCandidatesData) : 0;
 
@@ -82,7 +78,7 @@ const VotingComponent: React.FC = () => {
   const { data: candidatesData } = useReadContracts({
     contracts: contractReads,
   });
-  console.log("candidatesData", candidatesData);
+  // console.log("candidatesData", candidatesData);
 
   useEffect(() => {
     if (adminAddress && address) {
